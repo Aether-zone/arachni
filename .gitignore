@@ -1,0 +1,36 @@
+# compiled output
+dist
+tmp
+out-tsc
+*.tsbuildinfo
+
+# dependencies
+node_modules
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.settings/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# misc
+/coverage
+npm-debug.log
+yarn-error.log
+
+# Local environment. `*.example` files are committed as documentation; the real
+# ones hold machine-specific ports and credentials.
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# System Files
+.DS_Store
+Thumbs.db
+
+.claude/worktrees
+.claude/settings.local.json
