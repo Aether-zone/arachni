@@ -185,3 +185,91 @@ describe('a document with no @id', () => {
     ).toThrow(/no @id/);
   });
 });
+
+describe('what belongs to what', () => {
+  it('marks a nested resource as part of the thing that defined it', () => {
+    // A participation exists only as part of its meeting, and that is what
+    // lets the repository delete it when the meeting goes.
+    const { nodes } = mapper.map(
+      meeting({
+        participations: [
+          {
+            '@id': 'urn:aether:participation:1',
+            '@type': 'aether:Participation',
+            role: 'host',
+          },
+        ],
+      }),
+    );
+
+    const participation = nodes.find(
+      (node) => node.uri === 'urn:aether:participation:1',
+    );
+
+    expect(participation?.partOf).toBe('urn:aether:meeting:1');
+  });
+
+  it('leaves a referenced resource unowned', () => {
+    /*
+     * The person a meeting names goes on existing after the meeting is
+     * deleted. This is the whole reason the mapper's reference/nested
+     * distinction has to survive into the graph — both look like an edge once
+     * written, and only one of them may be cascaded through.
+     */
+    const { nodes } = mapper.map(
+      meeting({ participant: { '@id': 'urn:aether:person:1' } }),
+    );
+
+    const person = nodes.find((node) => node.uri === 'urn:aether:person:1');
+
+    expect(person?.partOf).toBeUndefined();
+  });
+
+  it('does not mark the document itself as part of anything', () => {
+    const { nodes, root } = mapper.map(meeting());
+
+    expect(root).toBe('urn:aether:meeting:1');
+    expect(nodes.find((node) => node.uri === root)?.partOf).toBeUndefined();
+  });
+
+  it('owns a part of a part, so a cascade can reach it', () => {
+    const { nodes } = mapper.map(
+      meeting({
+        participations: [
+          {
+            '@id': 'urn:aether:participation:1',
+            '@type': 'aether:Participation',
+            attachment: {
+              '@id': 'urn:aether:note:1',
+              '@type': 'aether:Note',
+              text: 'apologies',
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(nodes.find((node) => node.uri === 'urn:aether:note:1')?.partOf).toBe(
+      'urn:aether:participation:1',
+    );
+  });
+
+  it('keeps the first owner when two documents nest the same resource', () => {
+    // Ownership is not a race. Whichever document defined it first keeps it,
+    // so a second mention cannot quietly move what a cascade will delete.
+    const { nodes } = mapper.map(
+      meeting({
+        first: {
+          '@id': 'urn:aether:thing:1',
+          '@type': 'aether:Thing',
+          note: 'a',
+        },
+        second: { '@id': 'urn:aether:thing:1', note: 'b' },
+      }),
+    );
+
+    expect(
+      nodes.find((node) => node.uri === 'urn:aether:thing:1')?.partOf,
+    ).toBe('urn:aether:meeting:1');
+  });
+});

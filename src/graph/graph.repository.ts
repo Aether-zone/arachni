@@ -53,6 +53,51 @@ export class GraphRepository {
           );
         }
 
+        /*
+         * The ownership edges. `PART_OF` is arachni's own, not the document's:
+         * it records that a node was defined inside another and should not
+         * outlive it. Written after the nodes so both ends exist.
+         */
+        for (const node of projection.nodes) {
+          if (!node.partOf) {
+            continue;
+          }
+
+          await tx.run(
+            `
+            MATCH (part:Resource { uri: $uri, organizationId: $organizationId })
+            MATCH (whole:Resource { uri: $partOf, organizationId: $organizationId })
+            MERGE (part)-[:PART_OF]->(whole)
+            `,
+            { uri: node.uri, partOf: node.partOf, organizationId },
+          );
+        }
+
+        /*
+         * Parts the document no longer has.
+         *
+         * Re-projecting a resource overwrites what it still contains, but a
+         * participation removed from a meeting would otherwise linger for
+         * ever — attached to nothing, and still answering a query for
+         * participations. This is the same leak as the one `delete` fixes,
+         * reached by editing rather than deleting.
+         *
+         * Scoped to parts of *this* root, so nothing another document owns is
+         * touched.
+         */
+        await tx.run(
+          `
+          MATCH (part:Resource)-[:PART_OF*1..]->(root:Resource { uri: $root, organizationId: $organizationId })
+          WHERE NOT part.uri IN $keep
+          DETACH DELETE part
+          `,
+          {
+            root: projection.root,
+            keep: projection.nodes.map((node) => node.uri),
+            organizationId,
+          },
+        );
+
         for (const relationship of projection.relationships) {
           /*
            * The type is interpolated because Cypher will not parameterise a
@@ -94,10 +139,24 @@ export class GraphRepository {
 
     try {
       await session.executeWrite(async (tx) => {
+        /*
+         * The resource *and* everything defined inside it.
+         *
+         * `DETACH DELETE` on the resource alone removed the meeting and its
+         * edges but left every participation standing — nodes belonging to
+         * nothing, still matching a query for participations. A participation
+         * has no meaning without its meeting; the person it points at does,
+         * which is why the cascade follows `PART_OF` rather than every edge.
+         *
+         * `*1..` so a part of a part goes too. `OPTIONAL MATCH` because most
+         * resources have no parts at all, and an inner join would make the
+         * delete a no-op for them.
+         */
         await tx.run(
           `
           MATCH (n:Resource { uri: $uri, organizationId: $organizationId })
-          DETACH DELETE n
+          OPTIONAL MATCH (part:Resource)-[:PART_OF*1..]->(n)
+          DETACH DELETE n, part
           `,
           { uri, organizationId },
         );

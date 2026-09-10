@@ -14,6 +14,17 @@ export interface GraphNode {
   organizationId?: string;
   /** Everything that was a literal on the document. */
   properties: Record<string, unknown>;
+  /**
+   * The IRI of the resource this node was *defined inside*, when it was.
+   *
+   * The distinction the mapper draws between a nested resource and a bare
+   * `{ '@id': … }` reference is invisible in the finished graph — both end up
+   * as an edge — but it is exactly what decides whether a node should survive
+   * its neighbour being deleted. A participation exists only as part of its
+   * meeting; the person it points at does not. Recording it here is what lets
+   * the repository delete the first and leave the second.
+   */
+  partOf?: string;
 }
 
 export interface GraphRelationship {
@@ -27,6 +38,8 @@ export interface GraphRelationship {
 }
 
 export interface GraphProjection {
+  /** IRI of the document this projection is of — the one node that is not a part. */
+  root: string;
   nodes: GraphNode[];
   relationships: GraphRelationship[];
 }

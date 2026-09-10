@@ -20,9 +20,14 @@ export class JsonLdMapper {
     const nodes = new Map<string, GraphNode>();
     const relationships: GraphRelationship[] = [];
 
-    this.mapResource(document, document['@context'], nodes, relationships);
+    const root = this.mapResource(
+      document,
+      document['@context'],
+      nodes,
+      relationships,
+    );
 
-    return { nodes: [...nodes.values()], relationships };
+    return { root, nodes: [...nodes.values()], relationships };
   }
 
   private mapResource(
@@ -107,6 +112,21 @@ export class JsonLdMapper {
     // own, and an edge to it.
     if (this.isResource(value)) {
       const target = this.mapResource(value, context, nodes, relationships);
+
+      /*
+       * Defined *inside* this document rather than merely named by it, so it
+       * belongs to the subject and should not outlive it. The reference branch
+       * above deliberately does not do this: a person named by a meeting goes
+       * on existing after the meeting is deleted.
+       *
+       * Set here rather than in `mapResource`, which cannot tell whether it
+       * was called for the root or for something nested.
+       */
+      const node = nodes.get(target);
+
+      if (node && !node.partOf) {
+        node.partOf = subject;
+      }
 
       relationships.push({
         from: subject,
